@@ -131,6 +131,35 @@ if mode_agence:
             if erreurs:
                 st.error("Ignorées (déjà en attente) :\n" + "\n".join(erreurs))       
 
+    # Historique des demandes du bureau
+        st.markdown("---")
+        st.subheader("📋 Historique des demandes — " + bureau)
+        try:
+            ws_hist = sheet.worksheet("DEMANDES")
+            hist_data = ws_hist.get_all_records()
+            df_hist = pd.DataFrame(hist_data)
+            if not df_hist.empty:
+                df_hist_bureau = df_hist[
+                    df_hist["BUREAU"].str.upper() == bureau
+                ].copy()
+                if df_hist_bureau.empty:
+                    st.info("Aucune demande enregistrée pour ce bureau.")
+                else:
+                    df_hist_bureau = df_hist_bureau.sort_values(
+                        "DATE SAISIE", ascending=False
+                    )
+                    df_hist_bureau = df_hist_bureau[[
+                        "DATE SAISIE", "CODE AGENCE", "NOM", "PRENOM",
+                        "CLIENT", "MATRICULE DERNIERE MISSION",
+                        "MONTANT", "COMMENTAIRE", "STATUT"
+                    ]]
+                    st.dataframe(df_hist_bureau, use_container_width=True)
+            else:
+                st.info("Aucune demande enregistrée.")
+        except Exception as e:
+            st.error(f"Erreur historique : {e}")
+
+    
     except Exception as e:
         st.error(f"Erreur de connexion : {e}")
       # =====================
