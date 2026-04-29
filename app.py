@@ -63,19 +63,18 @@ if mode_agence:
             st.warning("Aucun salarié actif pour ce client.")
             st.stop()
 
-        # Chargement des demandes EN ATTENTE pour vérif doublons
+       # Chargement des demandes EN ATTENTE pour vérif doublons
         ws_demandes = sheet.worksheet("DEMANDES")
         demandes_data = ws_demandes.get_all_records()
         df_demandes = pd.DataFrame(demandes_data)
         en_attente = []
         if not df_demandes.empty:
             df_en_attente = df_demandes[df_demandes["STATUT"] == "EN ATTENTE"].copy()
-           en_attente = (
-    df_en_attente["MATRICULE"].astype(str) + "_" + 
-    df_en_attente["CODE AGENCE"].astype(str) + "_" +
-    df_en_attente["MATRICULE DERNIERE MISSION"].astype(str)
-).tolist()
-
+            en_attente = (
+                df_en_attente["MATRICULE"].astype(str) + "_" +
+                df_en_attente["CODE AGENCE"].astype(str) + "_" +
+                df_en_attente["MATRICULE DERNIERE MISSION"].astype(str)
+            ).tolist()
         # Affichage salariés en masse
         st.markdown("---")
         montants = {}
