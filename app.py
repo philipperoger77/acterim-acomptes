@@ -198,13 +198,43 @@ if mode_admin:
             st.info("Aucune demande enregistrée.")
             st.stop()
 
+      # Filtres
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            bureaux_dispo = ["Tous"] + sorted(df["BUREAU"].dropna().unique().tolist())
+            filtre_bureau = st.selectbox("Bureau", bureaux_dispo)
+        with col2:
+            if filtre_bureau != "Tous":
+                agences_dispo = ["Toutes"] + sorted(df[df["BUREAU"] == filtre_bureau]["CODE AGENCE"].astype(str).dropna().unique().tolist())
+            else:
+                agences_dispo = ["Toutes"] + sorted(df["CODE AGENCE"].astype(str).dropna().unique().tolist())
+            filtre_agence = st.selectbox("Agence", agences_dispo)
+        with col3:
+            if filtre_bureau != "Tous":
+                clients_dispo = ["Tous"] + sorted(df[df["BUREAU"] == filtre_bureau]["CLIENT"].dropna().unique().tolist())
+            else:
+                clients_dispo = ["Tous"] + sorted(df["CLIENT"].dropna().unique().tolist())
+            filtre_client = st.selectbox("Client", clients_dispo)
+        with col4:
+            dates_dispo = ["Toutes"] + sorted(df["DATE SAISIE"].str[:10].dropna().unique().tolist(), reverse=True)
+            filtre_date = st.selectbox("Date", dates_dispo)
+
+        # Application des filtres
         df_attente = df[df["STATUT"] == "EN ATTENTE"].copy()
+        if filtre_bureau != "Tous":
+            df_attente = df_attente[df_attente["BUREAU"] == filtre_bureau]
+        if filtre_agence != "Toutes":
+            df_attente = df_attente[df_attente["CODE AGENCE"].astype(str) == filtre_agence]
+        if filtre_client != "Tous":
+            df_attente = df_attente[df_attente["CLIENT"] == filtre_client]
+        if filtre_date != "Toutes":
+            df_attente = df_attente[df_attente["DATE SAISIE"].str[:10] == filtre_date]
 
         if df_attente.empty:
-            st.info("Aucune demande en attente.")
+            st.info("Aucune demande en attente pour ces critères.")
         else:
             st.subheader(f"{len(df_attente)} demande(s) EN ATTENTE")
-            for idx, row in df_attente.iterrows():
+            for idx, row in df_attente.iterrows():  
                 col1, col2 = st.columns([4, 1])
                 with col1:
                     st.write(
