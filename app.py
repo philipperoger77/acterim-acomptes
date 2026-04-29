@@ -54,42 +54,82 @@ if mode_agence:
             st.warning("Aucun salarié actif pour ce bureau.")
             st.stop()
 
-        # Menu déroulant
-        df_bureau["AFFICHAGE"] = (
-            "[" + df_bureau["CODE AGENCE"].astype(str) + "] " +
-            df_bureau["NOM"] + " " +
-            df_bureau["PRENOM"] + " — " +
-            df_bureau["DATE FIN THEORIQUE DERNIERE MISSION"].astype(str)
-        )
+ # Menu déroulant CLIENT
+        clients = sorted(df_bureau["CLIENT"].dropna().unique().tolist())
+        client_choisi = st.selectbox("Client", clients)
+        df_client = df_bureau[df_bureau["CLIENT"] == client_choisi].copy()
 
-        choix = st.selectbox("Salarié", df_bureau["AFFICHAGE"].tolist())
-        ligne = df_bureau[df_bureau["AFFICHAGE"] == choix].iloc[0]
+        if df_client.empty:
+            st.warning("Aucun salarié actif pour ce client.")
+            st.stop()
 
-        # Saisie
-        montant = st.number_input("Montant de l'acompte (€)", min_value=0.0, step=10.0)
-        commentaire = st.text_input("Commentaire (optionnel)")
+        # Chargement des demandes EN ATTENTE pour vérif doublons
+        ws_demandes = sheet.worksheet("DEMANDES")
+        demandes_data = ws_demandes.get_all_records()
+        df_demandes = pd.DataFrame(demandes_data)
+        en_attente = []
+        if not df_demandes.empty:
+            en_attente = df_demandes[df_demandes["STATUT"] == "EN ATTENTE"]["MATRICULE"].astype(str).tolist()
 
-        # Bouton valider
-        if st.button("✅ Valider la demande"):
-            if montant <= 0:
-                st.error("Le montant doit être supérieur à 0.")
-            else:
-                ws_demandes = sheet.worksheet("DEMANDES")
+        # Affichage salariés en masse
+        st.markdown("---")
+        montants = {}
+        commentaires = {}
+        for _, row in df_client.iterrows():
+            mat = str(row["MATRICULE"])
+            label = (
+                f"[{row['CODE AGENCE']}] {row['NOM']} {row['PRENOM']} "
+                f"— Mission {row['MATRICULE DERNIERE MISSION']} "
+                f"— {row['DATE FIN THEORIQUE DERNIERE MISSION']}"
+            )
+            col1, col2, col3 = st.columns([3, 1, 2])
+            with col1:
+                st.markdown(f"**{label}**")
+                if mat in en_attente:
+                    st.warning("⚠️ Demande déjà en attente")
+            with col2:
+                montants[mat] = st.number_input(
+                    "Montant (€)", min_value=0.0, step=10.0,
+                    key=f"montant_{mat}"
+                )
+            with col3:
+                commentaires[mat] = st.text_input(
+                    "Commentaire", key=f"commentaire_{mat}"
+                )
+            st.markdown("---")
+
+        # Bouton valider tout
+        if st.button("✅ Valider toutes les demandes"):
+            erreurs = []
+            succes = []
+            for _, row in df_client.iterrows():
+                mat = str(row["MATRICULE"])
+                montant = montants[mat]
+                if montant <= 0:
+                    continue
+                if mat in en_attente:
+                    erreurs.append(f"{row['NOM']} {row['PRENOM']} — demande déjà en attente")
+                    continue
                 nouvelle_ligne = [
                     datetime.now().strftime("%d/%m/%Y %H:%M"),
-                    ligne["BUREAU"],
-                    str(ligne["CODE AGENCE"]),
-                    str(ligne["MATRICULE"]),
-                    ligne["NOM"],
-                    ligne["PRENOM"],
-                    str(ligne["DATE FIN THEORIQUE DERNIERE MISSION"]),
-                    str(ligne["MATRICULE DERNIERE MISSION"]),
+                    row["BUREAU"],
+                    str(row["CODE AGENCE"]),
+                    mat,
+                    row["NOM"],
+                    row["PRENOM"],
+                    str(row["DATE FIN THEORIQUE DERNIERE MISSION"]),
+                    str(row["MATRICULE DERNIERE MISSION"]),
                     montant,
-                    commentaire,
+                    commentaires[mat],
                     "EN ATTENTE"
                 ]
                 ws_demandes.append_row(nouvelle_ligne)
-                st.success(f"Demande enregistrée pour {ligne['NOM']} {ligne['PRENOM']} — {montant} €")
+                succes.append(f"{row['NOM']} {row['PRENOM']} — {montant} €")
+
+            if succes:
+                st.success("Demandes enregistrées :\n" + "\n".join(succes))
+            if erreurs:
+                st.error("Ignorées (déjà en attente) :\n" + "\n".join(erreurs))       
 
     except Exception as e:
         st.error(f"Erreur de connexion : {e}")
