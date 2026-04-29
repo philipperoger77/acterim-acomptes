@@ -23,6 +23,7 @@ st.set_page_config(
     page_icon="💶",
     layout="centered"
 )
+st.image("logo_acterim.png", width=200)
 
 BUREAUX = [
     "BORDEAUX", "GRENOBLE", "LILLE", "LYON", "MARSEILLE",
