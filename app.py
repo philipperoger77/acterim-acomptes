@@ -70,10 +70,11 @@ if mode_agence:
         en_attente = []
         if not df_demandes.empty:
             df_en_attente = df_demandes[df_demandes["STATUT"] == "EN ATTENTE"].copy()
-            en_attente = (
-                df_en_attente["MATRICULE"].astype(str) + "_" + 
-                df_en_attente["CODE AGENCE"].astype(str)
-            ).tolist()
+           en_attente = (
+    df_en_attente["MATRICULE"].astype(str) + "_" + 
+    df_en_attente["CODE AGENCE"].astype(str) + "_" +
+    df_en_attente["MATRICULE DERNIERE MISSION"].astype(str)
+).tolist()
 
         # Affichage salariés en masse
         st.markdown("---")
@@ -95,11 +96,11 @@ if mode_agence:
             with col2:
                 montants[mat] = st.number_input(
                     "Montant (€)", min_value=0.0, step=10.0,
-                    key=f"montant_{mat}"
+                    key=f"montant_{mat}_{row['MATRICULE DERNIERE MISSION']}"
                 )
             with col3:
                 commentaires[mat] = st.text_input(
-                    "Commentaire", key=f"commentaire_{mat}"
+                    "Commentaire", key=f"commentaire_{mat}_{row['MATRICULE DERNIERE MISSION']}"
                 )
             st.markdown("---")
 
@@ -112,7 +113,7 @@ if mode_agence:
                 montant = montants[mat]
                 if montant <= 0:
                     continue
-                cle = mat + "_" + str(row["CODE AGENCE"])
+                cle = mat + "_" + str(row["CODE AGENCE"]) + "_" + str(row["MATRICULE DERNIERE MISSION"])
                 if cle in en_attente:
                     erreurs.append(f"{row['NOM']} {row['PRENOM']} — demande déjà en attente")
                     continue
