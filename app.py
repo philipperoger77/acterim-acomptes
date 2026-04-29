@@ -89,7 +89,8 @@ if mode_agence:
             col1, col2, col3 = st.columns([3, 1, 2])
             with col1:
                 st.markdown(f"**{label}**")
-                if mat in en_attente:
+                cle = mat + "_" + str(row["CODE AGENCE"])
+                if cle in en_attente:
                     st.warning("⚠️ Demande déjà en attente")
             with col2:
                 montants[mat] = st.number_input(
