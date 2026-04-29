@@ -120,7 +120,7 @@ if mode_agence:
                     erreurs.append(f"{row['NOM']} {row['PRENOM']} — demande déjà en attente")
                     continue
                 nouvelle_ligne = [
-                    datetime.now().strftime("%d/%m/%Y %H:%M"),
+                    (datetime.now() + timedelta(hours=2)).strftime("%d/%m/%Y %H:%M"),
                     row["BUREAU"],
                     str(row["CODE AGENCE"]),
                     mat,
