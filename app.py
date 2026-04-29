@@ -69,7 +69,11 @@ if mode_agence:
         df_demandes = pd.DataFrame(demandes_data)
         en_attente = []
         if not df_demandes.empty:
-            en_attente = df_demandes[df_demandes["STATUT"] == "EN ATTENTE"]["MATRICULE"].astype(str).tolist()
+            df_en_attente = df_demandes[df_demandes["STATUT"] == "EN ATTENTE"].copy()
+            en_attente = (
+                df_en_attente["MATRICULE"].astype(str) + "_" + 
+                df_en_attente["CODE AGENCE"].astype(str)
+            ).tolist()
 
         # Affichage salariés en masse
         st.markdown("---")
