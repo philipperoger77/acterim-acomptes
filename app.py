@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import streamlit as st
 import gspread
 import pandas as pd
@@ -17,7 +18,8 @@ def get_sheet():
     )
     client = gspread.authorize(creds)
     return client.open_by_key("1M9lOBhJrc50ts8g4aYBCNEOfGuFmbEbEhUUNgEKCA7E")
-  # Configuration
+
+# Configuration
 st.set_page_config(
     page_title="Acterim - Acomptes",
     page_icon="💶",
@@ -36,13 +38,13 @@ params = st.query_params
 bureau = params.get("bureau", "").upper().strip()
 mode_agence = bureau in BUREAUX
 mode_admin = not mode_agence
+
 # =====================
 # VUE AGENCE
 # =====================
 if mode_agence:
     st.title(f"💶 Demande d'acompte — {bureau}")
 
-    # Chargement des salariés du bureau
     try:
         sheet = get_sheet()
         ws_salaries = sheet.worksheet("SALARIES")
@@ -54,7 +56,7 @@ if mode_agence:
             st.warning("Aucun salarié actif pour ce bureau.")
             st.stop()
 
- # Menu déroulant CLIENT
+        # Menu déroulant CLIENT
         clients = sorted(df_bureau["CLIENT"].dropna().unique().tolist())
         client_choisi = st.selectbox("Client", clients)
         df_client = df_bureau[df_bureau["CLIENT"] == client_choisi].copy()
@@ -63,7 +65,7 @@ if mode_agence:
             st.warning("Aucun salarié actif pour ce client.")
             st.stop()
 
-       # Chargement des demandes EN ATTENTE pour vérif doublons
+        # Chargement des demandes EN ATTENTE pour vérif doublons
         ws_demandes = sheet.worksheet("DEMANDES")
         demandes_data = ws_demandes.get_all_records()
         df_demandes = pd.DataFrame(demandes_data)
@@ -75,6 +77,7 @@ if mode_agence:
                 df_en_attente["CODE AGENCE"].astype(str) + "_" +
                 df_en_attente["MATRICULE DERNIERE MISSION"].astype(str)
             ).tolist()
+
         # Affichage salariés en masse
         st.markdown("---")
         montants = {}
@@ -89,7 +92,7 @@ if mode_agence:
             col1, col2, col3 = st.columns([3, 1, 2])
             with col1:
                 st.markdown(f"**{label}**")
-                cle = mat + "_" + str(row["CODE AGENCE"])
+                cle = mat + "_" + str(row["CODE AGENCE"]) + "_" + str(row["MATRICULE DERNIERE MISSION"])
                 if cle in en_attente:
                     st.warning("⚠️ Demande déjà en attente")
             with col2:
@@ -127,7 +130,8 @@ if mode_agence:
                     str(row["MATRICULE DERNIERE MISSION"]),
                     montant,
                     commentaires[mat],
-                    "EN ATTENTE"
+                    "EN ATTENTE",
+                    row["CLIENT"]
                 ]
                 ws_demandes.append_row(nouvelle_ligne)
                 succes.append(f"{row['NOM']} {row['PRENOM']} — {montant} €")
@@ -135,9 +139,9 @@ if mode_agence:
             if succes:
                 st.success("Demandes enregistrées :\n" + "\n".join(succes))
             if erreurs:
-                st.error("Ignorées (déjà en attente) :\n" + "\n".join(erreurs))       
+                st.error("Ignorées (déjà en attente) :\n" + "\n".join(erreurs))
 
-    # Historique des demandes du bureau
+        # Historique des demandes du bureau
         st.markdown("---")
         st.subheader("📋 Historique des demandes — " + bureau)
         try:
@@ -165,10 +169,10 @@ if mode_agence:
         except Exception as e:
             st.error(f"Erreur historique : {e}")
 
-    
     except Exception as e:
         st.error(f"Erreur de connexion : {e}")
-      # =====================
+
+# =====================
 # VUE GESTIONNAIRE
 # =====================
 if mode_admin:
@@ -204,7 +208,7 @@ if mode_admin:
             st.info("Aucune demande enregistrée.")
             st.stop()
 
-      # Filtres
+        # Filtres
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             bureaux_dispo = ["Tous"] + sorted(df["BUREAU"].dropna().unique().tolist())
@@ -240,7 +244,7 @@ if mode_admin:
             st.info("Aucune demande en attente pour ces critères.")
         else:
             st.subheader(f"{len(df_attente)} demande(s) EN ATTENTE")
-            for idx, row in df_attente.iterrows():  
+            for idx, row in df_attente.iterrows():
                 col1, col2 = st.columns([4, 1])
                 with col1:
                     st.write(
@@ -252,11 +256,30 @@ if mode_admin:
                     if row["COMMENTAIRE"]:
                         st.caption(f"💬 {row['COMMENTAIRE']}")
                 with col2:
-                    if st.button("✅ Traité", key=f"traite_{idx}"):
-                        # Trouver la ligne dans le Sheet (idx + 2 car ligne 1 = en-têtes)
+                    if st.button("🔴 À traiter", key=f"traite_{idx}"):
                         col_statut = df.columns.tolist().index("STATUT") + 1
                         ws_demandes.update_cell(idx + 2, col_statut, "TRAITE")
                         st.rerun()
+
+        # Historique complet gestionnaire
+        st.markdown("---")
+        st.subheader("📋 Historique complet des demandes")
+        try:
+            ws_hist = sheet.worksheet("DEMANDES")
+            hist_data = ws_hist.get_all_records()
+            df_hist = pd.DataFrame(hist_data)
+            if not df_hist.empty:
+                df_hist = df_hist.sort_values("DATE SAISIE", ascending=False)
+                df_hist = df_hist[[
+                    "DATE SAISIE", "BUREAU", "CODE AGENCE", "NOM", "PRENOM",
+                    "CLIENT", "MATRICULE DERNIERE MISSION",
+                    "MONTANT", "COMMENTAIRE", "STATUT"
+                ]]
+                st.dataframe(df_hist, use_container_width=True)
+            else:
+                st.info("Aucune demande enregistrée.")
+        except Exception as e:
+            st.error(f"Erreur historique : {e}")
 
     except Exception as e:
         st.error(f"Erreur de connexion : {e}")
