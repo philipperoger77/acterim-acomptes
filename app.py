@@ -65,7 +65,7 @@ if mode_agence:
             st.warning("Aucun salarié actif pour ce client.")
             st.stop()
 
-        # Chargement des demandes EN ATTENTE pour vérif doublons
+        # Chargement des demandes EN ATTENTE pour vérif doublons (ANNULE ne bloque pas)
         ws_demandes = sheet.worksheet("DEMANDES")
         demandes_data = ws_demandes.get_all_records()
         df_demandes = pd.DataFrame(demandes_data)
@@ -245,7 +245,7 @@ if mode_admin:
         else:
             st.subheader(f"{len(df_attente)} demande(s) EN ATTENTE")
             for idx, row in df_attente.iterrows():
-                col1, col2 = st.columns([4, 1])
+                col1, col2, col3 = st.columns([4, 1, 1])
                 with col1:
                     st.write(
                         f"**{row['NOM']} {row['PRENOM']}** — "
@@ -259,6 +259,11 @@ if mode_admin:
                     if st.button("🔴 À traiter", key=f"traite_{idx}"):
                         col_statut = df.columns.tolist().index("STATUT") + 1
                         ws_demandes.update_cell(idx + 2, col_statut, "TRAITE")
+                        st.rerun()
+                with col3:
+                    if st.button("⬛ Annuler", key=f"annuler_{idx}"):
+                        col_statut = df.columns.tolist().index("STATUT") + 1
+                        ws_demandes.update_cell(idx + 2, col_statut, "ANNULE")
                         st.rerun()
 
         # Historique complet gestionnaire
