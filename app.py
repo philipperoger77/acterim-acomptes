@@ -112,7 +112,8 @@ if mode_agence:
                 montant = montants[mat]
                 if montant <= 0:
                     continue
-                if mat in en_attente:
+                cle = mat + "_" + str(row["CODE AGENCE"])
+                if cle in en_attente:
                     erreurs.append(f"{row['NOM']} {row['PRENOM']} — demande déjà en attente")
                     continue
                 nouvelle_ligne = [
