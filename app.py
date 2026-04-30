@@ -4,7 +4,8 @@ import gspread
 import pandas as pd
 from google.oauth2.service_account import Credentials
 from datetime import datetime, date, timedelta
-import json
+import io
+import calendar
 
 # Connexion Google Sheet
 def get_sheet():
@@ -19,6 +20,26 @@ def get_sheet():
     client = gspread.authorize(creds)
     return client.open_by_key("1M9lOBhJrc50ts8g4aYBCNEOfGuFmbEbEhUUNgEKCA7E")
 
+def calculer_lundi(date_fin_str, fin_mois):
+    """Calcule le lundi de la semaine selon la règle métier"""
+    try:
+        date_fin = datetime.strptime(date_fin_str, "%d/%m/%Y")
+    except:
+        try:
+            date_fin = datetime.strptime(date_fin_str, "%Y-%m-%d")
+        except:
+            return ""
+    
+    # Si date fin > fin du mois choisi, on prend la fin du mois comme référence
+    if date_fin > fin_mois:
+        date_ref = fin_mois
+    else:
+        date_ref = date_fin
+    
+    # Lundi de la semaine de date_ref (weekday: lundi=0)
+    lundi = date_ref - timedelta(days=date_ref.weekday())
+    return lundi.strftime("%d/%m/%Y")
+
 # Configuration
 st.set_page_config(
     page_title="Acterim - Acomptes",
@@ -32,6 +53,12 @@ BUREAUX = [
     "MONTPELLIER", "NANTES", "RENNES", "ROUEN",
     "SAINT MALO", "STRASBOURG", "TOULOUSE"
 ]
+
+MOIS_FR = {
+    1: "JANVIER", 2: "FEVRIER", 3: "MARS", 4: "AVRIL",
+    5: "MAI", 6: "JUIN", 7: "JUILLET", 8: "AOUT",
+    9: "SEPTEMBRE", 10: "OCTOBRE", 11: "NOVEMBRE", 12: "DECEMBRE"
+}
 
 # Détection du mode
 params = st.query_params
@@ -65,7 +92,7 @@ if mode_agence:
             st.warning("Aucun salarié actif pour ce client.")
             st.stop()
 
-        # Chargement des demandes EN ATTENTE pour vérif doublons (ANNULE ne bloque pas)
+        # Chargement des demandes EN ATTENTE pour vérif doublons
         ws_demandes = sheet.worksheet("DEMANDES")
         demandes_data = ws_demandes.get_all_records()
         df_demandes = pd.DataFrame(demandes_data)
@@ -149,15 +176,11 @@ if mode_agence:
             hist_data = ws_hist.get_all_records()
             df_hist = pd.DataFrame(hist_data)
             if not df_hist.empty:
-                df_hist_bureau = df_hist[
-                    df_hist["BUREAU"].str.upper() == bureau
-                ].copy()
+                df_hist_bureau = df_hist[df_hist["BUREAU"].str.upper() == bureau].copy()
                 if df_hist_bureau.empty:
                     st.info("Aucune demande enregistrée pour ce bureau.")
                 else:
-                    df_hist_bureau = df_hist_bureau.sort_values(
-                        "DATE SAISIE", ascending=False
-                    )
+                    df_hist_bureau = df_hist_bureau.sort_values("DATE SAISIE", ascending=False)
                     df_hist_bureau = df_hist_bureau[[
                         "DATE SAISIE", "CODE AGENCE", "NOM", "PRENOM",
                         "CLIENT", "MATRICULE DERNIERE MISSION",
@@ -201,6 +224,7 @@ if mode_admin:
     try:
         sheet = get_sheet()
         ws_demandes = sheet.worksheet("DEMANDES")
+        ws_import = sheet.worksheet("IMPORT")
         data = ws_demandes.get_all_records()
         df = pd.DataFrame(data)
 
@@ -257,14 +281,115 @@ if mode_admin:
                         st.caption(f"💬 {row['COMMENTAIRE']}")
                 with col2:
                     if st.button("🔴 À traiter", key=f"traite_{idx}"):
+                        # Mise à jour STATUT -> TRAITE dans DEMANDES
                         col_statut = df.columns.tolist().index("STATUT") + 1
                         ws_demandes.update_cell(idx + 2, col_statut, "TRAITE")
+                        # Ajout dans onglet IMPORT
+                        ws_import.append_row([
+                            str(row["MATRICULE DERNIERE MISSION"]),  # code Mission
+                            "",                                        # rubrique
+                            "",                                        # Libellé de la rubrique
+                            1,                                         # base payé
+                            row["MONTANT"],                            # taux payé
+                            1,                                         # base facturé
+                            "",                                        # taux facturé
+                            "",                                        # date (sera calculée à l'export)
+                            ""                                         # Commentaire rubrique
+                        ])
                         st.rerun()
                 with col3:
                     if st.button("⬛ Annuler", key=f"annuler_{idx}"):
                         col_statut = df.columns.tolist().index("STATUT") + 1
                         ws_demandes.update_cell(idx + 2, col_statut, "ANNULE")
                         st.rerun()
+
+        # =====================
+        # EXPORT FICHIER IMPORT
+        # =====================
+        st.markdown("---")
+        st.subheader("📤 Export fichier d'import Evolia")
+
+        # Menu déroulant mois/année
+        now = datetime.now()
+        mois_options = []
+        for i in range(-2, 4):
+            m = (now.month + i - 1) % 12 + 1
+            y = now.year + (now.month + i - 1) // 12
+            mois_options.append((m, y, f"{MOIS_FR[m]} {y}"))
+
+        mois_labels = [o[2] for o in mois_options]
+        mois_idx_defaut = 2
+        mois_choisi_label = st.selectbox("Mois de paie", mois_labels, index=mois_idx_defaut)
+        mois_choisi = next(o for o in mois_options if o[2] == mois_choisi_label)
+        mois_num, annee_num = mois_choisi[0], mois_choisi[1]
+
+        # Fin du mois choisi
+        dernier_jour = calendar.monthrange(annee_num, mois_num)[1]
+        fin_mois = datetime(annee_num, mois_num, dernier_jour)
+
+        # Vérification EN ATTENTE
+        nb_en_attente = len(df[df["STATUT"] == "EN ATTENTE"])
+        if nb_en_attente > 0:
+            st.warning(f"⚠️ Attention : {nb_en_attente} demande(s) sont encore EN ATTENTE et ne seront pas incluses dans l'export.")
+
+        # Lecture onglet IMPORT
+        import_data = ws_import.get_all_records()
+        df_import = pd.DataFrame(import_data)
+
+        if st.button("📥 Exporter le fichier d'import"):
+            if df_import.empty:
+                st.error("Aucune ligne dans l'onglet IMPORT à exporter.")
+            else:
+                # Récupérer les dates fin mission depuis DEMANDES pour calcul
+                df_traite = df[df["STATUT"] == "TRAITE"].copy()
+
+                # Construire le CSV ligne par ligne
+                lignes = []
+                header = "code Mission;rubrique;Libellé de la rubrique;base payé;taux payé;base facturé;taux facturé;date (choix de la semaine);Commentaire rubrique"
+                lignes.append(header)
+
+                for _, row_imp in df_import.iterrows():
+                    code_mission = str(row_imp["code Mission"])
+                    montant = row_imp["taux payé"]
+
+                    # Trouver la date fin mission correspondante dans DEMANDES
+                    match = df_traite[df_traite["MATRICULE DERNIERE MISSION"].astype(str) == code_mission]
+                    if not match.empty:
+                        date_fin_str = str(match.iloc[0]["DATE FIN THEORIQUE DERNIERE MISSION"])
+                        date_lundi = calculer_lundi(date_fin_str, fin_mois)
+                    else:
+                        date_lundi = calculer_lundi("", fin_mois)
+
+                    ligne = f"{code_mission};;;1;{montant};1;;{date_lundi};"
+                    lignes.append(ligne)
+
+                csv_content = "\n".join(lignes)
+                csv_bytes = csv_content.encode("latin-1", errors="replace")
+
+                nom_fichier = f"import_acomptes_{MOIS_FR[mois_num]}_{annee_num}.csv"
+
+                st.download_button(
+                    label="⬇️ Télécharger",
+                    data=csv_bytes,
+                    file_name=nom_fichier,
+                    mime="text/csv"
+                )
+
+                # Passage TRAITE -> IMPORTE dans DEMANDES
+                col_statut = df.columns.tolist().index("STATUT") + 1
+                for i, row in df.iterrows():
+                    if row["STATUT"] == "TRAITE":
+                        ws_demandes.update_cell(i + 2, col_statut, "IMPORTE")
+
+                # Vidage onglet IMPORT
+                ws_import.clear()
+                ws_import.append_row([
+                    "code Mission", "rubrique", "Libellé de la rubrique",
+                    "base payé", "taux payé", "base facturé",
+                    "taux facturé", "date (choix de la semaine)", "Commentaire rubrique"
+                ])
+
+                st.success(f"✅ Export généré : {nom_fichier} — onglet IMPORT vidé — statuts mis à jour")
 
         # Historique complet gestionnaire
         st.markdown("---")
