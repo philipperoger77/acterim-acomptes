@@ -20,21 +20,82 @@ def get_sheet():
     client = gspread.authorize(creds)
     return client.open_by_key("1M9lOBhJrc50ts8g4aYBCNEOfGuFmbEbEhUUNgEKCA7E")
 
+def parse_date(date_str):
+    """Parse une date DD/MM/YYYY ou YYYY-MM-DD"""
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(str(date_str).strip(), fmt)
+        except:
+            continue
+    return None
+
 def calculer_lundi(date_fin_str, fin_mois):
     """Calcule le lundi de la semaine selon la règle métier"""
-    try:
-        date_fin = datetime.strptime(date_fin_str, "%d/%m/%Y")
-    except:
-        try:
-            date_fin = datetime.strptime(date_fin_str, "%Y-%m-%d")
-        except:
-            return ""
-    if date_fin > fin_mois:
-        date_ref = fin_mois
-    else:
-        date_ref = date_fin
+    date_fin = parse_date(date_fin_str)
+    if not date_fin:
+        return ""
+    date_ref = fin_mois if date_fin > fin_mois else date_fin
     lundi = date_ref - timedelta(days=date_ref.weekday())
     return lundi.strftime("%d/%m/%Y")
+
+def calculer_lundi_avec_fallback(code_mission, date_fin_str, date_debut_str, fin_mois, df_salaries):
+    """
+    Calcule le lundi en vérifiant qu'il est dans la plage de la mission.
+    Si non, remonte à la mission N-1 du même salarié/agence.
+    Retourne (code_mission_final, date_lundi_final)
+    """
+    date_fin = parse_date(date_fin_str)
+    date_debut = parse_date(date_debut_str)
+
+    # Calcul du lundi candidat
+    lundi_str = calculer_lundi(date_fin_str, fin_mois)
+    lundi = parse_date(lundi_str)
+
+    # Vérification : le lundi est-il dans la plage de la mission ?
+    if lundi and date_debut and date_fin:
+        if date_debut <= lundi <= date_fin:
+            return code_mission, lundi_str
+
+    # Fallback : chercher la mission N-1 dans SALARIES
+    # Trouver le salarié correspondant à ce code mission (RANG MISSION = 1)
+    mission_rang1 = df_salaries[df_salaries["MATRICULE MISSION"].astype(str) == str(code_mission)]
+    if mission_rang1.empty:
+        return code_mission, lundi_str  # pas de fallback possible
+
+    matricule = mission_rang1.iloc[0]["MATRICULE"]
+    code_agence = mission_rang1.iloc[0]["CODE AGENCE"]
+
+    # Chercher la mission N-1 (RANG MISSION = 2) pour ce salarié/agence
+    mission_n1 = df_salaries[
+        (df_salaries["MATRICULE"].astype(str) == str(matricule)) &
+        (df_salaries["CODE AGENCE"].astype(str) == str(code_agence)) &
+        (df_salaries["RANG MISSION"].astype(str) == "2")
+    ]
+
+    if mission_n1.empty:
+        return code_mission, lundi_str  # pas de N-1 disponible
+
+    row_n1 = mission_n1.iloc[0]
+    date_fin_n1_str = str(row_n1["DATE FIN MISSION"])
+    date_debut_n1_str = str(row_n1["DATE DEBUT MISSION"])
+    code_mission_n1 = str(row_n1["MATRICULE MISSION"])
+
+    # Calcul du lundi sur la mission N-1
+    lundi_n1_str = calculer_lundi(date_fin_n1_str, fin_mois)
+    lundi_n1 = parse_date(lundi_n1_str)
+    date_debut_n1 = parse_date(date_debut_n1_str)
+    date_fin_n1 = parse_date(date_fin_n1_str)
+
+    # Vérifier que le lundi N-1 est dans la plage ET dans le mois choisi
+    fin_mois_dt = fin_mois
+    debut_mois = datetime(fin_mois_dt.year, fin_mois_dt.month, 1)
+
+    if lundi_n1 and date_debut_n1 and date_fin_n1:
+        if date_debut_n1 <= lundi_n1 <= date_fin_n1 and debut_mois <= lundi_n1 <= fin_mois_dt:
+            return code_mission_n1, lundi_n1_str
+
+    # Si N-1 ne convient pas non plus, on reste sur la mission d'origine
+    return code_mission, lundi_str
 
 # Configuration
 st.set_page_config(
@@ -88,6 +149,9 @@ if mode_agence:
             st.warning("Aucun salarié actif pour ce bureau.")
             st.stop()
 
+        # Filtrer uniquement RANG MISSION = 1 pour l'affichage agence
+        df_bureau = df_bureau[df_bureau["RANG MISSION"].astype(str) == "1"].copy()
+
         # Menu déroulant CLIENT
         clients = sorted(df_bureau["CLIENT"].dropna().unique().tolist())
         client_choisi = st.selectbox("Client", clients)
@@ -107,7 +171,7 @@ if mode_agence:
             en_attente = (
                 df_en_attente["MATRICULE"].astype(str) + "_" +
                 df_en_attente["CODE AGENCE"].astype(str) + "_" +
-                df_en_attente["MATRICULE DERNIERE MISSION"].astype(str)
+                df_en_attente["MATRICULE MISSION"].astype(str)
             ).tolist()
 
         # Affichage salariés en masse
@@ -116,25 +180,26 @@ if mode_agence:
         commentaires = {}
         for _, row in df_client.iterrows():
             mat = str(row["MATRICULE"])
+            miss = str(row["MATRICULE MISSION"])
             label = (
                 f"[{row['CODE AGENCE']}] {row['NOM']} {row['PRENOM']} "
-                f"— Mission {row['MATRICULE DERNIERE MISSION']} "
-                f"— {row['DATE FIN THEORIQUE DERNIERE MISSION']}"
+                f"— Mission {miss} "
+                f"— {row['DATE FIN MISSION']}"
             )
             col1, col2, col3 = st.columns([3, 1, 2])
             with col1:
                 st.markdown(f"**{label}**")
-                cle = mat + "_" + str(row["CODE AGENCE"]) + "_" + str(row["MATRICULE DERNIERE MISSION"])
+                cle = mat + "_" + str(row["CODE AGENCE"]) + "_" + miss
                 if cle in en_attente:
                     st.warning("⚠️ Demande déjà en attente")
             with col2:
-                montants[mat] = st.number_input(
+                montants[miss] = st.number_input(
                     "Montant (€)", min_value=0.0, step=10.0,
-                    key=f"montant_{mat}_{row['MATRICULE DERNIERE MISSION']}"
+                    key=f"montant_{miss}"
                 )
             with col3:
-                commentaires[mat] = st.text_input(
-                    "Commentaire", key=f"commentaire_{mat}_{row['MATRICULE DERNIERE MISSION']}"
+                commentaires[miss] = st.text_input(
+                    "Commentaire", key=f"commentaire_{miss}"
                 )
             st.markdown("---")
 
@@ -144,10 +209,11 @@ if mode_agence:
             succes = []
             for _, row in df_client.iterrows():
                 mat = str(row["MATRICULE"])
-                montant = montants[mat]
+                miss = str(row["MATRICULE MISSION"])
+                montant = montants[miss]
                 if montant <= 0:
                     continue
-                cle = mat + "_" + str(row["CODE AGENCE"]) + "_" + str(row["MATRICULE DERNIERE MISSION"])
+                cle = mat + "_" + str(row["CODE AGENCE"]) + "_" + miss
                 if cle in en_attente:
                     erreurs.append(f"{row['NOM']} {row['PRENOM']} — demande déjà en attente")
                     continue
@@ -158,10 +224,10 @@ if mode_agence:
                     mat,
                     row["NOM"],
                     row["PRENOM"],
-                    str(row["DATE FIN THEORIQUE DERNIERE MISSION"]),
-                    str(row["MATRICULE DERNIERE MISSION"]),
+                    str(row["DATE FIN MISSION"]),
+                    miss,
                     montant,
-                    commentaires[mat],
+                    commentaires[miss],
                     "EN ATTENTE",
                     row["CLIENT"]
                 ]
@@ -188,7 +254,7 @@ if mode_agence:
                     df_hist_bureau = df_hist_bureau.sort_values("DATE SAISIE", ascending=False)
                     df_hist_bureau = df_hist_bureau[[
                         "DATE SAISIE", "CODE AGENCE", "NOM", "PRENOM",
-                        "CLIENT", "MATRICULE DERNIERE MISSION",
+                        "CLIENT", "MATRICULE MISSION",
                         "MONTANT", "COMMENTAIRE", "STATUT"
                     ]]
                     st.dataframe(df_hist_bureau, use_container_width=True)
@@ -288,8 +354,9 @@ if mode_admin:
                     if st.button("🔴 À traiter", key=f"traite_{idx}"):
                         col_statut = df.columns.tolist().index("STATUT") + 1
                         ws_demandes.update_cell(idx + 2, col_statut, "TRAITE")
+                        # Stocker aussi DATE FIN MISSION et DATE DEBUT MISSION pour le fallback
                         ws_import.append_row([
-                            str(row["MATRICULE DERNIERE MISSION"]),
+                            str(row["MATRICULE MISSION"]),
                             "",
                             "",
                             1,
@@ -297,7 +364,9 @@ if mode_admin:
                             1,
                             "",
                             "",
-                            ""
+                            "",
+                            str(row["DATE FIN THEORIQUE DERNIERE MISSION"]),
+                            str(row.get("DATE DEBUT MISSION", ""))
                         ])
                         st.rerun()
                 with col3:
@@ -327,11 +396,14 @@ if mode_admin:
         import_data = ws_import.get_all_records()
         df_import = pd.DataFrame(import_data)
 
+        # Charger l'onglet SALARIES pour le fallback
+        ws_sal = sheet.worksheet("SALARIES")
+        df_salaries = pd.DataFrame(ws_sal.get_all_records())
+
         if st.button("📥 Exporter le fichier d'import"):
             if df_import.empty:
                 st.error("Aucune ligne dans l'onglet IMPORT à exporter.")
             else:
-                df_traite = df[df["STATUT"] == "TRAITE"].copy()
                 lignes = []
                 header = "code Mission;rubrique;Libellé de la rubrique;base payé;taux payé;base facturé;taux facturé;date (choix de la semaine);Commentaire rubrique"
                 lignes.append(header)
@@ -339,13 +411,15 @@ if mode_admin:
                 for _, row_imp in df_import.iterrows():
                     code_mission = str(row_imp["code Mission"])
                     montant = row_imp["taux payé"]
-                    match = df_traite[df_traite["MATRICULE DERNIERE MISSION"].astype(str) == code_mission]
-                    if not match.empty:
-                        date_fin_str = str(match.iloc[0]["DATE FIN THEORIQUE DERNIERE MISSION"])
-                        date_lundi = calculer_lundi(date_fin_str, fin_mois)
-                    else:
-                        date_lundi = ""
-                    ligne = f"{code_mission};;;1;{montant};1;;{date_lundi};"
+                    date_fin_str = str(row_imp.get("DATE FIN MISSION", ""))
+                    date_debut_str = str(row_imp.get("DATE DEBUT MISSION", ""))
+
+                    # Calcul avec fallback
+                    code_mission_final, date_lundi = calculer_lundi_avec_fallback(
+                        code_mission, date_fin_str, date_debut_str, fin_mois, df_salaries
+                    )
+
+                    ligne = f"{code_mission_final};;;1;{montant};1;;{date_lundi};"
                     lignes.append(ligne)
 
                 csv_content = "\n".join(lignes)
@@ -368,7 +442,8 @@ if mode_admin:
                 ws_import.append_row([
                     "code Mission", "rubrique", "Libellé de la rubrique",
                     "base payé", "taux payé", "base facturé",
-                    "taux facturé", "date (choix de la semaine)", "Commentaire rubrique"
+                    "taux facturé", "date (choix de la semaine)", "Commentaire rubrique",
+                    "DATE FIN MISSION", "DATE DEBUT MISSION"
                 ])
 
                 st.success(f"✅ Export généré : {nom_fichier} — onglet IMPORT vidé — statuts mis à jour")
@@ -384,7 +459,7 @@ if mode_admin:
                 df_hist = df_hist.sort_values("DATE SAISIE", ascending=False)
                 df_hist = df_hist[[
                     "DATE SAISIE", "BUREAU", "CODE AGENCE", "NOM", "PRENOM",
-                    "CLIENT", "MATRICULE DERNIERE MISSION",
+                    "CLIENT", "MATRICULE MISSION",
                     "MONTANT", "COMMENTAIRE", "STATUT"
                 ]]
                 st.dataframe(df_hist, use_container_width=True)
