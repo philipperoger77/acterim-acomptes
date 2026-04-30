@@ -29,43 +29,54 @@ def parse_date(date_str):
             continue
     return None
 
-def calculer_lundi(date_fin_str, fin_mois):
-    """Calcule le lundi de la semaine selon la règle métier"""
-    date_fin = parse_date(date_fin_str)
-    if not date_fin:
-        return ""
-    date_ref = fin_mois if date_fin > fin_mois else date_fin
+def calculer_lundi(date_ref):
+    """Calcule le lundi de la semaine d'une date donnée"""
     lundi = date_ref - timedelta(days=date_ref.weekday())
     return lundi.strftime("%d/%m/%Y")
 
-def calculer_lundi_avec_fallback(code_mission, date_fin_str, date_debut_str, fin_mois, df_salaries):
+def calculer_lundi_avec_fallback(code_mission, fin_mois, df_demandes, df_salaries):
     """
     Calcule le lundi en vérifiant qu'il est dans la plage de la mission.
-    Si non, remonte à la mission N-1 du même salarié/agence.
+    Les dates viennent de l'onglet DEMANDES.
+    Si le lundi est hors plage, remonte à la mission N-1 depuis SALARIES.
     Retourne (code_mission_final, date_lundi_final)
     """
+    # Récupérer DATE FIN MISSION et DATE DEBUT MISSION depuis DEMANDES
+    match_demande = df_demandes[
+        (df_demandes["MATRICULE MISSION"].astype(str) == str(code_mission)) &
+        (df_demandes["STATUT"] == "TRAITE")
+    ]
+    if match_demande.empty:
+        return code_mission, ""
+
+    row_demande = match_demande.iloc[0]
+    date_fin_str = str(row_demande["DATE FIN THEORIQUE DERNIERE MISSION"])
     date_fin = parse_date(date_fin_str)
-    date_debut = parse_date(date_debut_str)
+    if not date_fin:
+        return code_mission, ""
 
-    # Calcul du lundi candidat
-    lundi_str = calculer_lundi(date_fin_str, fin_mois)
-    lundi = parse_date(lundi_str)
+    # Calcul du lundi candidat selon règle métier
+    date_ref = fin_mois if date_fin > fin_mois else date_fin
+    lundi = date_ref - timedelta(days=date_ref.weekday())
+    lundi_str = lundi.strftime("%d/%m/%Y")
 
-    # Vérification : le lundi est-il dans la plage de la mission ?
-    if lundi and date_debut and date_fin:
-        if date_debut <= lundi <= date_fin:
-            return code_mission, lundi_str
-
-    # Fallback : chercher la mission N-1 dans SALARIES
-    # Trouver le salarié correspondant à ce code mission (RANG MISSION = 1)
+    # Chercher DATE DEBUT MISSION dans DEMANDES (colonne absente — on cherche dans SALARIES)
     mission_rang1 = df_salaries[df_salaries["MATRICULE MISSION"].astype(str) == str(code_mission)]
     if mission_rang1.empty:
-        return code_mission, lundi_str  # pas de fallback possible
+        return code_mission, lundi_str  # pas d'info début, on retourne le lundi calculé
 
+    date_debut_str = str(mission_rang1.iloc[0]["DATE DEBUT MISSION"])
+    date_debut = parse_date(date_debut_str)
+
+    # Vérification : le lundi est-il dans la plage [debut, fin] de la mission ?
+    if date_debut and date_fin:
+        if date_debut <= lundi <= date_fin:
+            return code_mission, lundi_str  # ✅ dans la plage, pas de fallback
+
+    # Fallback : chercher mission N-1 (RANG MISSION = 2) dans SALARIES
     matricule = mission_rang1.iloc[0]["MATRICULE"]
     code_agence = mission_rang1.iloc[0]["CODE AGENCE"]
 
-    # Chercher la mission N-1 (RANG MISSION = 2) pour ce salarié/agence
     mission_n1 = df_salaries[
         (df_salaries["MATRICULE"].astype(str) == str(matricule)) &
         (df_salaries["CODE AGENCE"].astype(str) == str(code_agence)) &
@@ -76,25 +87,25 @@ def calculer_lundi_avec_fallback(code_mission, date_fin_str, date_debut_str, fin
         return code_mission, lundi_str  # pas de N-1 disponible
 
     row_n1 = mission_n1.iloc[0]
-    date_fin_n1_str = str(row_n1["DATE FIN MISSION"])
-    date_debut_n1_str = str(row_n1["DATE DEBUT MISSION"])
     code_mission_n1 = str(row_n1["MATRICULE MISSION"])
+    date_fin_n1 = parse_date(str(row_n1["DATE FIN MISSION"]))
+    date_debut_n1 = parse_date(str(row_n1["DATE DEBUT MISSION"]))
 
-    # Calcul du lundi sur la mission N-1
-    lundi_n1_str = calculer_lundi(date_fin_n1_str, fin_mois)
-    lundi_n1 = parse_date(lundi_n1_str)
-    date_debut_n1 = parse_date(date_debut_n1_str)
-    date_fin_n1 = parse_date(date_fin_n1_str)
+    if not date_fin_n1:
+        return code_mission, lundi_str
+
+    # Calcul lundi sur N-1
+    date_ref_n1 = fin_mois if date_fin_n1 > fin_mois else date_fin_n1
+    lundi_n1 = date_ref_n1 - timedelta(days=date_ref_n1.weekday())
+    lundi_n1_str = lundi_n1.strftime("%d/%m/%Y")
 
     # Vérifier que le lundi N-1 est dans la plage ET dans le mois choisi
-    fin_mois_dt = fin_mois
-    debut_mois = datetime(fin_mois_dt.year, fin_mois_dt.month, 1)
+    debut_mois = datetime(fin_mois.year, fin_mois.month, 1)
+    if date_debut_n1 and date_fin_n1:
+        if date_debut_n1 <= lundi_n1 <= date_fin_n1 and debut_mois <= lundi_n1 <= fin_mois:
+            return code_mission_n1, lundi_n1_str  # ✅ fallback N-1 valide
 
-    if lundi_n1 and date_debut_n1 and date_fin_n1:
-        if date_debut_n1 <= lundi_n1 <= date_fin_n1 and debut_mois <= lundi_n1 <= fin_mois_dt:
-            return code_mission_n1, lundi_n1_str
-
-    # Si N-1 ne convient pas non plus, on reste sur la mission d'origine
+    # Aucun fallback valide — on retourne la mission d'origine avec le lundi calculé
     return code_mission, lundi_str
 
 # Configuration
@@ -354,7 +365,7 @@ if mode_admin:
                     if st.button("🔴 À traiter", key=f"traite_{idx}"):
                         col_statut = df.columns.tolist().index("STATUT") + 1
                         ws_demandes.update_cell(idx + 2, col_statut, "TRAITE")
-                        # Stocker aussi DATE FIN MISSION et DATE DEBUT MISSION pour le fallback
+                        # Onglet IMPORT : 9 colonnes strictes format Evolia
                         ws_import.append_row([
                             str(row["MATRICULE MISSION"]),
                             "",
@@ -364,9 +375,7 @@ if mode_admin:
                             1,
                             "",
                             "",
-                            "",
-                            str(row["DATE FIN THEORIQUE DERNIERE MISSION"]),
-                            str(row.get("DATE DEBUT MISSION", ""))
+                            ""
                         ])
                         st.rerun()
                 with col3:
@@ -396,7 +405,7 @@ if mode_admin:
         import_data = ws_import.get_all_records()
         df_import = pd.DataFrame(import_data)
 
-        # Charger l'onglet SALARIES pour le fallback
+        # Charger SALARIES pour le fallback (dates début/fin des missions N-1)
         ws_sal = sheet.worksheet("SALARIES")
         df_salaries = pd.DataFrame(ws_sal.get_all_records())
 
@@ -404,6 +413,9 @@ if mode_admin:
             if df_import.empty:
                 st.error("Aucune ligne dans l'onglet IMPORT à exporter.")
             else:
+                # Récupérer les demandes TRAITE pour les dates
+                df_traite = df[df["STATUT"] == "TRAITE"].copy()
+
                 lignes = []
                 header = "code Mission;rubrique;Libellé de la rubrique;base payé;taux payé;base facturé;taux facturé;date (choix de la semaine);Commentaire rubrique"
                 lignes.append(header)
@@ -411,12 +423,10 @@ if mode_admin:
                 for _, row_imp in df_import.iterrows():
                     code_mission = str(row_imp["code Mission"])
                     montant = row_imp["taux payé"]
-                    date_fin_str = str(row_imp.get("DATE FIN MISSION", ""))
-                    date_debut_str = str(row_imp.get("DATE DEBUT MISSION", ""))
 
-                    # Calcul avec fallback
+                    # Fallback : dates depuis DEMANDES, missions N-1 depuis SALARIES
                     code_mission_final, date_lundi = calculer_lundi_avec_fallback(
-                        code_mission, date_fin_str, date_debut_str, fin_mois, df_salaries
+                        code_mission, fin_mois, df_traite, df_salaries
                     )
 
                     ligne = f"{code_mission_final};;;1;{montant};1;;{date_lundi};"
@@ -433,17 +443,18 @@ if mode_admin:
                     mime="text/csv"
                 )
 
+                # Passage TRAITE -> IMPORTE
                 col_statut = df.columns.tolist().index("STATUT") + 1
                 for i, row in df.iterrows():
                     if row["STATUT"] == "TRAITE":
                         ws_demandes.update_cell(i + 2, col_statut, "IMPORTE")
 
+                # Vidage onglet IMPORT — en-têtes 9 colonnes strictes
                 ws_import.clear()
                 ws_import.append_row([
                     "code Mission", "rubrique", "Libellé de la rubrique",
                     "base payé", "taux payé", "base facturé",
-                    "taux facturé", "date (choix de la semaine)", "Commentaire rubrique",
-                    "DATE FIN MISSION", "DATE DEBUT MISSION"
+                    "taux facturé", "date (choix de la semaine)", "Commentaire rubrique"
                 ])
 
                 st.success(f"✅ Export généré : {nom_fichier} — onglet IMPORT vidé — statuts mis à jour")
