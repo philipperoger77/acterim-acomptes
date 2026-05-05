@@ -112,7 +112,7 @@ def calculer_lundi_avec_fallback(code_mission, fin_mois, df_demandes, df_salarie
 st.set_page_config(
     page_title="Acterim - Acomptes",
     page_icon="💶",
-    layout="centered"
+    layout="wide"
 )
 st.image("logo_acterim.png", width=200)
 
