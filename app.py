@@ -195,7 +195,7 @@ if mode_agence:
             label = (
                 f"[{row['CODE AGENCE']}] {row['NOM']} {row['PRENOM']} "
                 f"— Mission {miss} "
-                f"— {row['DATE FIN MISSION']}"
+                f"— du {row['DATE DEBUT MISSION']} au {row['DATE FIN MISSION']}"
             )
             col1, col2, col3 = st.columns([3, 1, 2])
             with col1:
