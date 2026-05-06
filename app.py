@@ -453,10 +453,12 @@ if mode_admin:
                                 "mission_n1": code_mission_final,
                                 "dates_m2": dates_m2,
                                 "mois": mois_choisi_label,
+                                "date_lundi": date_lundi,
                                 "msg": (
                                     f"L'acompte de **{int(montant)} €** de **{r['PRENOM']} {r['NOM']}** "
                                     f"saisi sur la mission {code_mission} ({dates_m1}) a été transféré sur la mission "
                                     f"précédente **{code_mission_final}** ({dates_m2}) car vous avez choisi le mois **{mois_choisi_label}**."
+                                    f" Date semaine injectée : **{date_lundi}**."
                                 )
                             })
 
@@ -487,7 +489,8 @@ if mode_admin:
                             log["dates_m1"],
                             log["mission_n1"],
                             log["dates_m2"],
-                            log["mois"]
+                            log["mois"],
+                            log["date_lundi"]
                         ])
                     # Affichage dans l'interface
                     st.markdown("---")
