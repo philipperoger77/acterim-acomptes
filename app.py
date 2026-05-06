@@ -419,6 +419,7 @@ if mode_admin:
                 df_traite = df[df["STATUT"] == "TRAITE"].copy()
 
                 lignes = []
+                logs_fallback = []
                 header = "code Mission;rubrique;Libellé de la rubrique;base payé;taux payé;base facturé;taux facturé;date (choix de la semaine);Commentaire rubrique"
                 lignes.append(header)
 
@@ -430,6 +431,17 @@ if mode_admin:
                     code_mission_final, date_lundi = calculer_lundi_avec_fallback(
                         code_mission, fin_mois, df_traite, df_salaries
                     )
+
+                    # Log si changement de mission
+                    if code_mission_final != code_mission:
+                        match = df_traite[df_traite["MATRICULE MISSION"].astype(str) == code_mission]
+                        if not match.empty:
+                            r = match.iloc[0]
+                            logs_fallback.append(
+                                f"L'acompte de **{int(montant)} €** de **{r['PRENOM']} {r['NOM']}** "
+                                f"saisi sur la mission {code_mission} a été transféré sur la mission "
+                                f"précédente **{code_mission_final}** car vous avez choisi le mois **{mois_choisi_label}**."
+                            )
 
                     ligne = f"{code_mission_final};;;1;{montant};1;;{date_lundi};"
                     lignes.append(ligne)
@@ -444,6 +456,12 @@ if mode_admin:
                     file_name=nom_fichier,
                     mime="text/csv"
                 )
+
+                if logs_fallback:
+                    st.markdown("---")
+                    st.subheader("📋 Transferts de mission détectés")
+                    for log in logs_fallback:
+                        st.info(log)
 
                 # Passage TRAITE -> IMPORTE
                 col_statut = df.columns.tolist().index("STATUT") + 1
