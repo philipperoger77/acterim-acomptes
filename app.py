@@ -309,6 +309,7 @@ if mode_admin:
         sheet = get_sheet()
         ws_demandes = sheet.worksheet("DEMANDES")
         ws_import = sheet.worksheet("IMPORT")
+        ws_logs = sheet.worksheet("LOGS")
         data = ws_demandes.get_all_records()
         df = pd.DataFrame(data)
 
@@ -443,11 +444,21 @@ if mode_admin:
                             # Dates mission N-1
                             m2 = df_salaries[df_salaries["MATRICULE MISSION"].astype(str) == code_mission_final]
                             dates_m2 = f"{m2.iloc[0]['DATE DEBUT MISSION']} → {m2.iloc[0]['DATE FIN MISSION']}" if not m2.empty else "dates inconnues"
-                            logs_fallback.append(
-                                f"L'acompte de **{int(montant)} €** de **{r['PRENOM']} {r['NOM']}** "
-                                f"saisi sur la mission {code_mission} ({dates_m1}) a été transféré sur la mission "
-                                f"précédente **{code_mission_final}** ({dates_m2}) car vous avez choisi le mois **{mois_choisi_label}**."
-                            )
+                            logs_fallback.append({
+                                "nom": r["NOM"],
+                                "prenom": r["PRENOM"],
+                                "montant": int(montant),
+                                "mission_orig": code_mission,
+                                "dates_m1": dates_m1,
+                                "mission_n1": code_mission_final,
+                                "dates_m2": dates_m2,
+                                "mois": mois_choisi_label,
+                                "msg": (
+                                    f"L'acompte de **{int(montant)} €** de **{r['PRENOM']} {r['NOM']}** "
+                                    f"saisi sur la mission {code_mission} ({dates_m1}) a été transféré sur la mission "
+                                    f"précédente **{code_mission_final}** ({dates_m2}) car vous avez choisi le mois **{mois_choisi_label}**."
+                                )
+                            })
 
                     ligne = f"{code_mission_final};;;1;{montant};1;;{date_lundi};"
                     lignes.append(ligne)
@@ -464,10 +475,25 @@ if mode_admin:
                 )
 
                 if logs_fallback:
+                    # Écriture dans l'onglet LOGS
+                    date_export = (datetime.now() + timedelta(hours=2)).strftime("%d/%m/%Y %H:%M")
+                    for log in logs_fallback:
+                        ws_logs.append_row([
+                            date_export,
+                            log["nom"],
+                            log["prenom"],
+                            log["montant"],
+                            log["mission_orig"],
+                            log["dates_m1"],
+                            log["mission_n1"],
+                            log["dates_m2"],
+                            log["mois"]
+                        ])
+                    # Affichage dans l'interface
                     st.markdown("---")
                     st.subheader("📋 Transferts de mission détectés")
                     for log in logs_fallback:
-                        st.info(log)
+                        st.info(log["msg"])
 
                 # Passage TRAITE -> IMPORTE
                 col_statut = df.columns.tolist().index("STATUT") + 1
@@ -504,6 +530,20 @@ if mode_admin:
                 st.info("Aucune demande enregistrée.")
         except Exception as e:
             st.error(f"Erreur historique : {e}")
+
+        # Historique des transferts de mission
+        st.markdown("---")
+        st.subheader("🔀 Historique des transferts de mission")
+        try:
+            logs_data = ws_logs.get_all_records()
+            df_logs = pd.DataFrame(logs_data)
+            if not df_logs.empty:
+                df_logs = df_logs.sort_values("DATE EXPORT", ascending=False)
+                st.dataframe(df_logs, use_container_width=True)
+            else:
+                st.info("Aucun transfert de mission enregistré.")
+        except Exception as e:
+            st.error(f"Erreur logs : {e}")
 
     except Exception as e:
         st.error(f"Erreur de connexion : {e}")
