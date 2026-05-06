@@ -437,10 +437,16 @@ if mode_admin:
                         match = df_traite[df_traite["MATRICULE MISSION"].astype(str) == code_mission]
                         if not match.empty:
                             r = match.iloc[0]
+                            # Dates mission originale
+                            m1 = df_salaries[df_salaries["MATRICULE MISSION"].astype(str) == code_mission]
+                            dates_m1 = f"{m1.iloc[0]['DATE DEBUT MISSION']} → {m1.iloc[0]['DATE FIN MISSION']}" if not m1.empty else "dates inconnues"
+                            # Dates mission N-1
+                            m2 = df_salaries[df_salaries["MATRICULE MISSION"].astype(str) == code_mission_final]
+                            dates_m2 = f"{m2.iloc[0]['DATE DEBUT MISSION']} → {m2.iloc[0]['DATE FIN MISSION']}" if not m2.empty else "dates inconnues"
                             logs_fallback.append(
                                 f"L'acompte de **{int(montant)} €** de **{r['PRENOM']} {r['NOM']}** "
-                                f"saisi sur la mission {code_mission} a été transféré sur la mission "
-                                f"précédente **{code_mission_final}** car vous avez choisi le mois **{mois_choisi_label}**."
+                                f"saisi sur la mission {code_mission} ({dates_m1}) a été transféré sur la mission "
+                                f"précédente **{code_mission_final}** ({dates_m2}) car vous avez choisi le mois **{mois_choisi_label}**."
                             )
 
                     ligne = f"{code_mission_final};;;1;{montant};1;;{date_lundi};"
