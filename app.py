@@ -417,10 +417,11 @@ if mode_admin:
                 st.error("Aucune ligne dans l'onglet IMPORT à exporter.")
             else:
                 # Récupérer les demandes TRAITE pour les dates
-                df_traite = df[df["STATUT"] == "TRAITE"].copy()
+                debut_mois = datetime(annee_num, mois_num, 1)
 
                 lignes = []
                 logs_fallback = []
+                alertes_hors_mois = []
                 header = "code Mission;rubrique;Libellé de la rubrique;base payé;taux payé;base facturé;taux facturé;date (choix de la semaine);Commentaire rubrique"
                 lignes.append(header)
 
@@ -432,6 +433,19 @@ if mode_admin:
                     code_mission_final, date_lundi = calculer_lundi_avec_fallback(
                         code_mission, fin_mois, df_traite, df_salaries
                     )
+
+                    # Détection date hors mois choisi
+                    date_lundi_dt = parse_date(date_lundi)
+                    if date_lundi_dt and not (debut_mois <= date_lundi_dt <= fin_mois):
+                        match = df_traite[df_traite["MATRICULE MISSION"].astype(str) == code_mission]
+                        if not match.empty:
+                            r = match.iloc[0]
+                            alertes_hors_mois.append(
+                                f"⛔ **{r['PRENOM']} {r['NOM']}** — acompte de **{int(montant)} €** "
+                                f"— mission {code_mission_final} — date injectée : **{date_lundi}** "
+                                f"— cette date est **hors du mois {mois_choisi_label}**. "
+                                f"Vérifiez la mission avant d'importer dans Evolia."
+                            )
 
                     # Log si changement de mission
                     if code_mission_final != code_mission:
@@ -464,6 +478,14 @@ if mode_admin:
 
                     ligne = f"{code_mission_final};;;1;{montant};1;;{date_lundi};"
                     lignes.append(ligne)
+
+                # Alertes hors mois — affichées en rouge AVANT le téléchargement
+                if alertes_hors_mois:
+                    st.markdown("---")
+                    st.error(f"🚨 **{len(alertes_hors_mois)} demande(s) avec une date hors du mois {mois_choisi_label} !**")
+                    for alerte in alertes_hors_mois:
+                        st.error(alerte)
+                    st.markdown("---")
 
                 csv_content = "\n".join(lignes)
                 csv_bytes = csv_content.encode("latin-1", errors="replace")
