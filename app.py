@@ -423,6 +423,8 @@ if mode_admin:
                 lignes = []
                 logs_fallback = []
                 alertes_hors_mois = []
+                missions_exclues = set()
+                lignes_exclues = []
                 header = "code Mission;rubrique;Libellé de la rubrique;base payé;taux payé;base facturé;taux facturé;date (choix de la semaine);Commentaire rubrique"
                 lignes.append(header)
 
@@ -493,6 +495,12 @@ if mode_admin:
                     if not exclure:
                         ligne = f"{code_mission_final};;;1;{montant};1;;{date_lundi};"
                         lignes.append(ligne)
+                    else:
+                        missions_exclues.add(code_mission)
+                        lignes_exclues.append([
+                            str(row_imp["code Mission"]), "", "", 1,
+                            row_imp["taux payé"], 1, "", "", ""
+                        ])
 
                 # Alertes hors mois — affichées en rouge AVANT le téléchargement
                 if alertes_hors_mois:
@@ -535,21 +543,25 @@ if mode_admin:
                     for log in logs_fallback:
                         st.info(log["msg"])
 
-                # Passage TRAITE -> IMPORTE
+                # Passage TRAITE -> IMPORTE uniquement pour les missions exportées
                 col_statut = df.columns.tolist().index("STATUT") + 1
                 for i, row in df.iterrows():
-                    if row["STATUT"] == "TRAITE":
+                    if row["STATUT"] == "TRAITE" and str(row["MATRICULE MISSION"]) not in missions_exclues:
                         ws_demandes.update_cell(i + 2, col_statut, "IMPORTE")
 
-                # Vidage onglet IMPORT — en-têtes 9 colonnes strictes
+                # Vidage onglet IMPORT — on conserve les lignes exclues
                 ws_import.clear()
                 ws_import.append_row([
                     "code Mission", "rubrique", "Libellé de la rubrique",
                     "base payé", "taux payé", "base facturé",
                     "taux facturé", "date (choix de la semaine)", "Commentaire rubrique"
                 ])
+                for row_exclue in lignes_exclues:
+                    ws_import.append_row(row_exclue)
 
-                st.success(f"✅ Export généré : {nom_fichier} — onglet IMPORT vidé — statuts mis à jour")
+                nb_exclus = len(missions_exclues)
+                msg_exclus = f" — {nb_exclus} demande(s) conservée(s) pour un prochain export." if nb_exclus else ""
+                st.success(f"✅ Export généré : {nom_fichier} — statuts mis à jour{msg_exclus}")
 
         # Historique complet gestionnaire
         st.markdown("---")
