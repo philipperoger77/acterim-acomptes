@@ -435,17 +435,30 @@ if mode_admin:
                         code_mission, fin_mois, df_traite, df_salaries
                     )
 
-                    # Détection date hors mois choisi → exclusion du fichier
+                    # Vérification double : date dans le mois choisi ET dans la plage de la mission finale
                     date_lundi_dt = parse_date(date_lundi)
                     hors_mois = date_lundi_dt and not (debut_mois <= date_lundi_dt <= fin_mois)
-                    if hors_mois:
+
+                    # Vérification plage mission finale dans SALARIES
+                    hors_plage_mission = False
+                    if date_lundi_dt:
+                        mission_finale = df_salaries[df_salaries["MATRICULE MISSION"].astype(str) == code_mission_final]
+                        if not mission_finale.empty:
+                            debut_miss = parse_date(str(mission_finale.iloc[0]["DATE DEBUT MISSION"]))
+                            fin_miss = parse_date(str(mission_finale.iloc[0]["DATE FIN MISSION"]))
+                            if debut_miss and fin_miss:
+                                hors_plage_mission = not (debut_miss <= date_lundi_dt <= fin_miss)
+
+                    exclure = hors_mois or hors_plage_mission
+                    if exclure:
                         match = df_traite[df_traite["MATRICULE MISSION"].astype(str) == code_mission]
                         if not match.empty:
                             r = match.iloc[0]
+                            raison = "hors du mois " + mois_choisi_label if hors_mois else f"hors de la plage de la mission {code_mission_final}"
                             alertes_hors_mois.append(
                                 f"⛔ **{r['PRENOM']} {r['NOM']}** — acompte de **{int(montant)} €** "
                                 f"— mission {code_mission_final} — date calculée : **{date_lundi}** "
-                                f"— **exclu du fichier** car hors du mois {mois_choisi_label}."
+                                f"— **exclu du fichier** car {raison}."
                             )
 
                     # Log si changement de mission
@@ -477,7 +490,7 @@ if mode_admin:
                                 )
                             })
 
-                    if not hors_mois:
+                    if not exclure:
                         ligne = f"{code_mission_final};;;1;{montant};1;;{date_lundi};"
                         lignes.append(ligne)
 
