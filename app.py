@@ -417,6 +417,7 @@ if mode_admin:
                 st.error("Aucune ligne dans l'onglet IMPORT à exporter.")
             else:
                 # Récupérer les demandes TRAITE pour les dates
+                df_traite = df[df["STATUT"] == "TRAITE"].copy()
                 debut_mois = datetime(annee_num, mois_num, 1)
 
                 lignes = []
