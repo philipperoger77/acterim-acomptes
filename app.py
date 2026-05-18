@@ -434,17 +434,17 @@ if mode_admin:
                         code_mission, fin_mois, df_traite, df_salaries
                     )
 
-                    # Détection date hors mois choisi
+                    # Détection date hors mois choisi → exclusion du fichier
                     date_lundi_dt = parse_date(date_lundi)
-                    if date_lundi_dt and not (debut_mois <= date_lundi_dt <= fin_mois):
+                    hors_mois = date_lundi_dt and not (debut_mois <= date_lundi_dt <= fin_mois)
+                    if hors_mois:
                         match = df_traite[df_traite["MATRICULE MISSION"].astype(str) == code_mission]
                         if not match.empty:
                             r = match.iloc[0]
                             alertes_hors_mois.append(
                                 f"⛔ **{r['PRENOM']} {r['NOM']}** — acompte de **{int(montant)} €** "
-                                f"— mission {code_mission_final} — date injectée : **{date_lundi}** "
-                                f"— cette date est **hors du mois {mois_choisi_label}**. "
-                                f"Vérifiez la mission avant d'importer dans Evolia."
+                                f"— mission {code_mission_final} — date calculée : **{date_lundi}** "
+                                f"— **exclu du fichier** car hors du mois {mois_choisi_label}."
                             )
 
                     # Log si changement de mission
@@ -476,8 +476,9 @@ if mode_admin:
                                 )
                             })
 
-                    ligne = f"{code_mission_final};;;1;{montant};1;;{date_lundi};"
-                    lignes.append(ligne)
+                    if not hors_mois:
+                        ligne = f"{code_mission_final};;;1;{montant};1;;{date_lundi};"
+                        lignes.append(ligne)
 
                 # Alertes hors mois — affichées en rouge AVANT le téléchargement
                 if alertes_hors_mois:
