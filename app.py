@@ -151,6 +151,15 @@ if mode_agence:
 
     try:
         sheet = get_sheet()
+
+        # Dernière actualisation
+        try:
+            ws_meta = sheet.worksheet("META")
+            derniere_maj = ws_meta.acell("B1").value or "inconnue"
+            st.caption(f"🕐 Dernière actualisation de la base : {derniere_maj}")
+        except:
+            pass
+
         ws_salaries = sheet.worksheet("SALARIES")
         data = ws_salaries.get_all_records()
         df = pd.DataFrame(data)
