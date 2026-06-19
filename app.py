@@ -194,7 +194,7 @@ if mode_agence:
                 df_en_attente["MATRICULE MISSION"].astype(str)
             ).tolist()
 
-        st.caption("ℹ️ Le code mission retenu pour la retenue de l'acompte peut être ajusté automatiquement selon la période de paie.")
+        st.caption("ℹ️ Le mois de retenue de l'acompte pourra être ajusté automatiquement par le service paie.")
 
         # Affichage salariés en masse
         st.markdown("---")
