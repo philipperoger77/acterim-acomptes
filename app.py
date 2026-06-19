@@ -213,6 +213,7 @@ if mode_agence:
         montants = {}
         commentaires = {}
         with st.form("saisie_acomptes"):
+            st.warning("⚠️ Pensez à valider avant de changer de client (sinon les montants saisis seront perdus).")
             for _, row in df_client.iterrows():
                 mat = str(row["MATRICULE"])
                 miss = str(row["MATRICULE MISSION"])
