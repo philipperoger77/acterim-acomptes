@@ -7,7 +7,8 @@ from datetime import datetime, date, timedelta
 import io
 import calendar
 
-# Connexion Google Sheet
+# Connexion Google Sheet (mise en cache pour éviter de ré-authentifier à chaque rerun)
+@st.cache_resource
 def get_sheet():
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
@@ -19,6 +20,21 @@ def get_sheet():
     )
     client = gspread.authorize(creds)
     return client.open_by_key("1M9lOBhJrc50ts8g4aYBCNEOfGuFmbEbEhUUNgEKCA7E")
+
+# SALARIES et META ne sont écrits que par le push planifié (jamais par l'app).
+# On les met en cache pour ne pas relire l'API à chaque interaction Streamlit.
+@st.cache_data(ttl=300, show_spinner=False)
+def load_salaries():
+    sheet = get_sheet()
+    return pd.DataFrame(sheet.worksheet("SALARIES").get_all_records())
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_derniere_maj():
+    sheet = get_sheet()
+    try:
+        return sheet.worksheet("META").acell("B1").value or "inconnue"
+    except Exception:
+        return "inconnue"
 
 def parse_date(date_str):
     """Parse une date DD/MM/YYYY ou YYYY-MM-DD"""
@@ -152,17 +168,11 @@ if mode_agence:
     try:
         sheet = get_sheet()
 
-        # Dernière actualisation
-        try:
-            ws_meta = sheet.worksheet("META")
-            derniere_maj = ws_meta.acell("B1").value or "inconnue"
-            st.caption(f"🕐 Dernière actualisation de la base : {derniere_maj}")
-        except:
-            pass
+        # Dernière actualisation (cachée)
+        derniere_maj = load_derniere_maj()
+        st.caption(f"🕐 Dernière actualisation de la base : {derniere_maj}")
 
-        ws_salaries = sheet.worksheet("SALARIES")
-        data = ws_salaries.get_all_records()
-        df = pd.DataFrame(data)
+        df = load_salaries()
         df_bureau = df[df["BUREAU"].str.upper() == bureau].copy()
 
         if df_bureau.empty:
@@ -418,8 +428,7 @@ if mode_admin:
         df_import = pd.DataFrame(import_data)
 
         # Charger SALARIES pour le fallback (dates début/fin des missions N-1)
-        ws_sal = sheet.worksheet("SALARIES")
-        df_salaries = pd.DataFrame(ws_sal.get_all_records())
+        df_salaries = load_salaries()
 
         if st.button("📥 Exporter le fichier d'import"):
             if df_import.empty:
