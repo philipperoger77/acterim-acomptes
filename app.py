@@ -206,37 +206,42 @@ if mode_agence:
 
         st.caption("ℹ️ Le mois de retenue de l'acompte pourra être ajusté automatiquement par le service paie.")
 
-        # Affichage salariés en masse
+        # Affichage salariés en masse — dans un formulaire :
+        # les clics +/- des montants ne déclenchent PAS de rerun ni de lecture API.
+        # Le script ne se relance qu'au clic sur "Valider".
         st.markdown("---")
         montants = {}
         commentaires = {}
-        for _, row in df_client.iterrows():
-            mat = str(row["MATRICULE"])
-            miss = str(row["MATRICULE MISSION"])
-            label = (
-                f"[{row['CODE AGENCE']}] {row['NOM']} {row['PRENOM']} "
-                f"— Mission {miss} "
-                f"— du {row['DATE DEBUT MISSION']} au {row['DATE FIN MISSION']}"
-            )
-            col1, col2, col3 = st.columns([3, 1, 2])
-            with col1:
-                st.markdown(f"**{label}**")
-                cle = mat + "_" + str(row["CODE AGENCE"]) + "_" + miss
-                if cle in en_attente:
-                    st.warning("⚠️ Demande déjà en attente")
-            with col2:
-                montants[miss] = st.number_input(
-                    "Montant (€)", min_value=0.0, step=10.0,
-                    key=f"montant_{miss}"
+        with st.form("saisie_acomptes"):
+            for _, row in df_client.iterrows():
+                mat = str(row["MATRICULE"])
+                miss = str(row["MATRICULE MISSION"])
+                label = (
+                    f"[{row['CODE AGENCE']}] {row['NOM']} {row['PRENOM']} "
+                    f"— Mission {miss} "
+                    f"— du {row['DATE DEBUT MISSION']} au {row['DATE FIN MISSION']}"
                 )
-            with col3:
-                commentaires[miss] = st.text_input(
-                    "Commentaire", key=f"commentaire_{miss}"
-                )
-            st.markdown("---")
+                col1, col2, col3 = st.columns([3, 1, 2])
+                with col1:
+                    st.markdown(f"**{label}**")
+                    cle = mat + "_" + str(row["CODE AGENCE"]) + "_" + miss
+                    if cle in en_attente:
+                        st.warning("⚠️ Demande déjà en attente")
+                with col2:
+                    montants[miss] = st.number_input(
+                        "Montant (€)", min_value=0.0, step=10.0,
+                        key=f"montant_{miss}"
+                    )
+                with col3:
+                    commentaires[miss] = st.text_input(
+                        "Commentaire", key=f"commentaire_{miss}"
+                    )
+                st.markdown("---")
 
-        # Bouton valider tout
-        if st.button("✅ Valider toutes les demandes"):
+            submitted = st.form_submit_button("✅ Valider toutes les demandes")
+
+        # Traitement après validation
+        if submitted:
             erreurs = []
             succes = []
             for _, row in df_client.iterrows():
