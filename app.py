@@ -308,28 +308,9 @@ if mode_agence:
 # VUE GESTIONNAIRE
 # =====================
 if mode_admin:
-    st.title("🔐 Acterim — Gestion des acomptes")
+    st.title("💶 Acterim — Gestion des acomptes")
 
-    # Login
-    if "authentifie" not in st.session_state:
-        st.session_state.authentifie = False
-
-    if not st.session_state.authentifie:
-        pwd = st.text_input("Mot de passe", type="password")
-        if st.button("Se connecter"):
-            if pwd == st.secrets["admin_password"]:
-                st.session_state.authentifie = True
-                st.rerun()
-            else:
-                st.error("Mot de passe incorrect.")
-        st.stop()
-
-    # Interface gestionnaire
-    st.success("Connecté ✅")
-    if st.button("Se déconnecter"):
-        st.session_state.authentifie = False
-        st.rerun()
-
+    # Interface gestionnaire (accès direct, sans mot de passe)
     try:
         sheet = get_sheet()
         ws_demandes = sheet.worksheet("DEMANDES")
