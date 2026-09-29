@@ -130,6 +130,20 @@ st.set_page_config(
     page_icon="💶",
     layout="wide"
 )
+
+# Masque le badge Streamlit Community Cloud ("created by ...") + lien profil,
+# qui exposait publiquement les autres apps du compte.
+st.markdown(
+    """
+    <style>
+    a[href*="share.streamlit.io/user"] {display: none !important;}
+    [class*="_profileContainer_"] {display: none !important;}
+    [class*="viewerBadge"] {display: none !important;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.image("logo_acterim.png", width=200)
 
 BUREAUX = [
