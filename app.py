@@ -510,63 +510,75 @@ if mode_admin:
                 # Alertes hors mois — affichées en rouge AVANT le téléchargement
                 if alertes_hors_mois:
                     st.markdown("---")
-                    st.error(f"🚨 **{len(alertes_hors_mois)} demande(s) avec une date hors du mois {mois_choisi_label} !**")
+                    st.error(f"🚨 **{len(alertes_hors_mois)} demande(s) exclue(s) de l'export {mois_choisi_label} (date incohérente) !**")
                     for alerte in alertes_hors_mois:
                         st.error(alerte)
                     st.markdown("---")
 
-                csv_content = "\n".join(lignes)
-                csv_bytes = csv_content.encode("latin-1", errors="replace")
-                nom_fichier = f"import_acomptes_{MOIS_FR[mois_num]}_{annee_num}.csv"
+                # Nombre de lignes de données réellement exportables (hors en-tête)
+                nb_lignes_donnees = len(lignes) - 1
 
-                st.download_button(
-                    label="⬇️ Télécharger",
-                    data=csv_bytes,
-                    file_name=nom_fichier,
-                    mime="text/csv"
-                )
+                if nb_lignes_donnees == 0:
+                    # Rien d'exportable : toutes les demandes ont été exclues/conservées.
+                    # On ne génère AUCUN fichier et on ne touche à AUCUN statut.
+                    st.warning(
+                        f"⚠️ Aucune ligne exportable pour {mois_choisi_label} — "
+                        f"aucune demande ne correspond à une mission sur ce mois. "
+                        f"Toutes les demandes sont conservées pour un prochain export."
+                    )
+                else:
+                    csv_content = "\n".join(lignes)
+                    csv_bytes = csv_content.encode("latin-1", errors="replace")
+                    nom_fichier = f"import_acomptes_{MOIS_FR[mois_num]}_{annee_num}.csv"
 
-                if logs_fallback:
-                    # Écriture dans l'onglet LOGS
-                    date_export = (datetime.now() + timedelta(hours=2)).strftime("%d/%m/%Y %H:%M")
-                    for log in logs_fallback:
-                        ws_logs.append_row([
-                            date_export,
-                            log["nom"],
-                            log["prenom"],
-                            log["montant"],
-                            log["mission_orig"],
-                            log["dates_m1"],
-                            log["mission_n1"],
-                            log["dates_m2"],
-                            log["mois"],
-                            log["date_lundi"]
-                        ])
-                    # Affichage dans l'interface
-                    st.markdown("---")
-                    st.subheader("📋 Transferts de mission détectés")
-                    for log in logs_fallback:
-                        st.info(log["msg"])
+                    st.download_button(
+                        label="⬇️ Télécharger",
+                        data=csv_bytes,
+                        file_name=nom_fichier,
+                        mime="text/csv"
+                    )
 
-                # Passage TRAITE -> IMPORTE uniquement pour les missions exportées
-                col_statut = df.columns.tolist().index("STATUT") + 1
-                for i, row in df.iterrows():
-                    if row["STATUT"] == "TRAITE" and str(row["MATRICULE MISSION"]) not in missions_exclues:
-                        ws_demandes.update_cell(i + 2, col_statut, "IMPORTE")
+                    if logs_fallback:
+                        # Écriture dans l'onglet LOGS
+                        date_export = (datetime.now() + timedelta(hours=2)).strftime("%d/%m/%Y %H:%M")
+                        for log in logs_fallback:
+                            ws_logs.append_row([
+                                date_export,
+                                log["nom"],
+                                log["prenom"],
+                                log["montant"],
+                                log["mission_orig"],
+                                log["dates_m1"],
+                                log["mission_n1"],
+                                log["dates_m2"],
+                                log["mois"],
+                                log["date_lundi"]
+                            ])
+                        # Affichage dans l'interface
+                        st.markdown("---")
+                        st.subheader("📋 Transferts de mission détectés")
+                        for log in logs_fallback:
+                            st.info(log["msg"])
 
-                # Vidage onglet IMPORT — on conserve les lignes exclues
-                ws_import.clear()
-                ws_import.append_row([
-                    "code Mission", "rubrique", "Libellé de la rubrique",
-                    "base payé", "taux payé", "base facturé",
-                    "taux facturé", "date (choix de la semaine)", "Commentaire rubrique"
-                ])
-                for row_exclue in lignes_exclues:
-                    ws_import.append_row(row_exclue)
+                    # Passage TRAITE -> IMPORTE uniquement pour les missions exportées
+                    col_statut = df.columns.tolist().index("STATUT") + 1
+                    for i, row in df.iterrows():
+                        if row["STATUT"] == "TRAITE" and str(row["MATRICULE MISSION"]) not in missions_exclues:
+                            ws_demandes.update_cell(i + 2, col_statut, "IMPORTE")
 
-                nb_exclus = len(missions_exclues)
-                msg_exclus = f" — {nb_exclus} demande(s) conservée(s) pour un prochain export." if nb_exclus else ""
-                st.success(f"✅ Export généré : {nom_fichier} — statuts mis à jour{msg_exclus}")
+                    # Vidage onglet IMPORT — on conserve les lignes exclues
+                    ws_import.clear()
+                    ws_import.append_row([
+                        "code Mission", "rubrique", "Libellé de la rubrique",
+                        "base payé", "taux payé", "base facturé",
+                        "taux facturé", "date (choix de la semaine)", "Commentaire rubrique"
+                    ])
+                    for row_exclue in lignes_exclues:
+                        ws_import.append_row(row_exclue)
+
+                    nb_exclus = len(missions_exclues)
+                    msg_exclus = f" — {nb_exclus} demande(s) conservée(s) pour un prochain export." if nb_exclus else ""
+                    st.success(f"✅ Export généré : {nom_fichier} — statuts mis à jour{msg_exclus}")
 
         # Historique complet gestionnaire
         st.markdown("---")
